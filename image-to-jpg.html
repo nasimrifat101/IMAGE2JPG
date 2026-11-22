@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Image to JPG Converter</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --text: #111827; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #2563eb; --accent-text: #ffffff; --danger: #dc2626; --ok: #16a34a;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --surface: #181b22; --text: #f3f4f6; --muted: #9ca3af;
+      --border: #2a2f3a; --accent: #3b82f6; --accent-text: #ffffff; --danger: #f87171; --ok: #4ade80;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 36px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop.over, .drop:hover, .drop:focus-visible { border-color: var(--accent); outline: none; }
+  .drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  .drop span { color: var(--muted); font-size: 13px; }
+  .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type=range] { width: 100%; }
+  input[type=number], input[type=color] { width: 100%; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 8px; font-size: 14px; }
+  input[type=color] { padding: 2px; cursor: pointer; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
+  button { font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .item { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+  .item:first-child { border-top: 0; }
+  .thumb { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--bg); border: 1px solid var(--border); flex: none; }
+  .meta { min-width: 0; flex: 1; }
+  .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .info { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .info .err { color: var(--danger); } .info .ok { color: var(--ok); }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 8px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+  .offline { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); margin-left: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Image to JPG <span class="offline">100% offline</span></h1>
+  <p class="sub">Files never leave your device. Drop, paste, or pick images.</p>
+
+  <div class="card">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose images">
+      <strong>Drop images here, or click to choose</strong>
+      <span>PNG, WebP, GIF, BMP, SVG, AVIF, ICO, JPEG and anything else your browser can open. You can also paste with Ctrl+V.</span>
+    </div>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+  </div>
+
+  <div class="card">
+    <div class="settings">
+      <div>
+        <label for="quality">Quality: <b id="qv">90</b>%</label>
+        <input id="quality" type="range" min="10" max="100" value="90">
+      </div>
+      <div>
+        <label for="maxdim">Max width/height (px, empty = original)</label>
+        <input id="maxdim" type="number" min="16" max="16000" placeholder="Original size">
+      </div>
+      <div>
+        <label for="bg">Background (JPG has no transparency)</label>
+        <input id="bg" type="color" value="#ffffff">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:8px">
+      <button id="zipBtn" class="primary" disabled>Download all (ZIP)</button>
+      <button id="clearBtn" disabled>Clear</button>
+      <span class="spacer"></span>
+      <span id="summary" class="info"></span>
+    </div>
+    <div id="list"><div class="empty">No images yet.</div></div>
+    <p class="note">
+      Animated GIF/WebP: only the first frame is converted. HEIC/HEIF and TIFF open only if your browser supports them (Safari handles HEIC; Chrome/Firefox usually do not).
+      Photos are auto-rotated using EXIF orientation. Very large images (above about 16,000 px per side) may fail on some devices.
+    </p>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const MAX_PIXELS = 100_000_000; // safety cap for canvas area
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    drop: $('drop'), file: $('file'), list: $('list'), quality: $('quality'), qv: $('qv'),
+    maxdim: $('maxdim'), bg: $('bg'), zipBtn: $('zipBtn'), clearBtn: $('clearBtn'), summary: $('summary'),
+  };
+
+  /** @type {{id:number,file:File,status:'pending'|'working'|'done'|'error',blob:Blob|null,url:string|null,w:number,h:number,error:string|null}[]} */
+  let items = [];
+  let nextId = 1;
+  let runToken = 0;
+  let debounceTimer = null;
+
+  const fmtBytes = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+  const baseName = (name) => (name.replace(/\.[^./\\]+$/, '') || 'image').replace(/[\\/:*?"<>|]+/g, '_');
+
+  // ---------- Decode ----------
+  async function decode(file) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (_) { /* fall through (SVG and some formats need <img>) */ }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      await img.decode();
+      return { img, width: img.naturalWidth || 1024, height: img.naturalHeight || 1024, close() {} };
+    } finally {
+      // Safe to revoke after decode() resolved and before draw only if drawn from a bitmap; keep for img draw:
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    }
+  }
+
+  async function convertOne(file, { quality, maxDim, bg }) {
+    const src = await decode(file);
+    try {
+      let w = src.width, h = src.height;
+      if (maxDim && Math.max(w, h) > maxDim) {
+        const s = maxDim / Math.max(w, h);
+        w = Math.max(1, Math.round(w * s));
+        h = Math.max(1, Math.round(h * s));
+      }
+      if (w * h > MAX_PIXELS) throw new Error('Image is too large to process on this device');
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src.img || src, 0, 0, w, h);
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
+      canvas.width = canvas.height = 0; // release memory
+      if (!blob) throw new Error('Browser failed to encode JPG');
+      return { blob, w, h };
+    } finally {
+      src.close && src.close();
+    }
+  }
+
+  // ---------- Queue ----------
+  function getSettings() {
+    const md = parseInt(els.maxdim.value, 10);
+    return {
+      quality: Math.min(1, Math.max(0.1, parseInt(els.quality.value, 10) / 100)),
+      maxDim: Number.isFinite(md) && md > 0 ? md : 0,
+      bg: els.bg.value || '#ffffff',
+    };
+  }
+
+  async function processAll() {
+    const token = ++runToken;
+    const settings = getSettings();
+    for (const it of items) {
+      if (token !== runToken) return; // newer run started
+      it.status = 'working'; it.error = null;
+      render();
+      try {
+        const out = await convertOne(it.file, settings);
+        if (token !== runToken) return;
+        if (it.url) URL.revokeObjectURL(it.url);
+        it.blob = out.blob; it.w = out.w; it.h = out.h;
+        it.url = URL.createObjectURL(out.blob);
+        it.status = 'done';
+      } catch (e) {
+        it.status = 'error';
+        it.blob = null;
+        it.error = (e && e.message) || 'Could not read this file as an image';
+      }
+      render();
+    }
+  }
+
+  function addFiles(fileList) {
+    const files = Array.from(fileList).filter((f) => f && (f.type.startsWith('image/') || /\.(heic|heif|tiff?|avif|webp|bmp|ico|svg|gif|png|jpe?g)$/i.test(f.name)));
+    if (!files.length) return;
+    for (const f of files) {
+      items.push({ id: nextId++, file: f, status: 'pending', blob: null, url: null, w: 0, h: 0, error: null });
+    }
+    render();
+    processAll();
+  }
+
+  function scheduleReprocess() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { if (items.length) processAll(); }, 300);
+  }
+
+  // ---------- Download ----------
+  function uniqueNames() {
+    const used = new Map();
+    return (it) => {
+      const base = baseName(it.file.name);
+      const n = (used.get(base) || 0) + 1;
+      used.set(base, n);
+      return n === 1 ? base + '.jpg' : `${base}-${n}.jpg`;
+    };
+  }
+
+  function saveBlob(blob, name) {
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  // Minimal store-only ZIP writer (no compression, JPGs are already compressed)
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; }
+    return t;
+  })();
+  const crc32 = (u8) => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+
+  function buildZip(files) {
+    const enc = new TextEncoder();
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    const chunks = [], central = [];
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+      lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      offset += 30 + name.length + size;
+    }
+    const centralSize = central.reduce((s, c) => s + c.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true); end.setUint32(16, offset, true);
+    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+  }
+
+  async function downloadZip() {
+    const done = items.filter((i) => i.status === 'done' && i.blob);
+    if (!done.length) return;
+    els.zipBtn.disabled = true;
+    try {
+      const nameOf = uniqueNames();
+      const files = [];
+      for (const it of done) files.push({ name: nameOf(it), data: new Uint8Array(await it.blob.arrayBuffer()) });
+      saveBlob(buildZip(files), 'converted-jpgs.zip');
+    } finally { render(); }
+  }
+
+  // ---------- Render ----------
+  function render() {
+    els.list.replaceChildren();
+    if (!items.length) {
+      const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No images yet.';
+      els.list.appendChild(e);
+    }
+    const nameOf = uniqueNames();
+    let doneCount = 0, before = 0, after = 0;
+    for (const it of items) {
+      const row = document.createElement('div'); row.className = 'item';
+      const img = document.createElement('img'); img.className = 'thumb'; img.alt = '';
+      if (it.url) img.src = it.url;
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const name = document.createElement('div'); name.className = 'name'; name.title = it.file.name; name.textContent = it.file.name;
+      const info = document.createElement('div'); info.className = 'info';
+      if (it.status === 'done') {
+        doneCount++; before += it.file.size; after += it.blob.size;
+        const ok = document.createElement('span'); ok.className = 'ok'; ok.textContent = 'Done';
+        info.append(ok, ` · ${it.w}×${it.h} · ${fmtBytes(it.file.size)} → ${fmtBytes(it.blob.size)}`);
+      } else if (it.status === 'error') {
+        const er = document.createElement('span'); er.className = 'err'; er.textContent = it.error;
+        info.appendChild(er);
+      } else {
+        info.textContent = it.status === 'working' ? 'Converting…' : 'Waiting…';
+      }
+      meta.append(name, info);
+      const actions = document.createElement('div'); actions.className = 'row';
+      const dl = document.createElement('button'); dl.textContent = 'Download';
+      dl.disabled = it.status !== 'done';
+      const fileName = nameOf(it);
+      dl.addEventListener('click', () => it.blob && saveBlob(it.blob, fileName));
+      const rm = document.createElement('button'); rm.textContent = '✕'; rm.setAttribute('aria-label', 'Remove');
+      rm.addEventListener('click', () => {
+        if (it.url) URL.revokeObjectURL(it.url);
+        items = items.filter((x) => x.id !== it.id);
+        render();
+      });
+      actions.append(dl, rm);
+      row.append(img, meta, actions);
+      els.list.appendChild(row);
+    }
+    els.zipBtn.disabled = doneCount < 1;
+    els.clearBtn.disabled = !items.length;
+    els.summary.textContent = items.length ? `${doneCount}/${items.length} converted · ${fmtBytes(before)} → ${fmtBytes(after)}` : '';
+  }
+
+  // ---------- Events ----------
+  els.drop.addEventListener('click', () => els.file.click());
+  els.drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.file.click(); } });
+  els.file.addEventListener('change', () => { addFiles(els.file.files); els.file.value = ''; });
+  ['dragenter', 'dragover'].forEach((t) => els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((t) => els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.remove('over'); }));
+  els.drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+  // Stop the browser from navigating to a file dropped outside the drop zone
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => { e.preventDefault(); if (!els.drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+  window.addEventListener('paste', (e) => { if (e.clipboardData && e.clipboardData.files.length) addFiles(e.clipboardData.files); });
+
+  els.quality.addEventListener('input', () => { els.qv.textContent = els.quality.value; scheduleReprocess(); });
+  els.maxdim.addEventListener('input', scheduleReprocess);
+  els.bg.addEventListener('input', scheduleReprocess);
+  els.zipBtn.addEventListener('click', downloadZip);
+  els.clearBtn.addEventListener('click', () => {
+    runToken++;
+    items.forEach((i) => i.url && URL.revokeObjectURL(i.url));
+    items = []; render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
